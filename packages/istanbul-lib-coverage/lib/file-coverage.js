@@ -45,6 +45,11 @@ function assertValidObject(obj) {
 const keyFromLoc = ({ start, end }) =>
     `${start.line}|${start.column}|${end.line}|${end.column}`;
 
+// Lenient key that ignores end.column - used for fuzzy matching when exact match fails
+// This handles cases where different transpilers produce different end.column values
+const keyFromLocLenient = ({ start, end }) =>
+    `${start.line}|${start.column}|${end.line}`;
+
 const isObj = o => !!o && typeof o === 'object';
 const isLineCol = o =>
     isObj(o) && typeof o.line === 'number' && typeof o.column === 'number';
@@ -131,36 +136,76 @@ const addNearestContainerHits = (item, itemHits, map, mapHits) => {
 };
 
 const mergeProp = (aHits, aMap, bHits, bMap, itemKey = keyFromLoc) => {
-    const aItems = {};
-    for (const [key, itemHits] of Object.entries(aHits)) {
-        const item = aMap[key];
-        aItems[itemKey(item)] = [itemHits, item];
-    }
-    const bItems = {};
-    for (const [key, itemHits] of Object.entries(bHits)) {
-        const item = bMap[key];
-        bItems[itemKey(item)] = [itemHits, item];
-    }
+    // Derive lenient key function from the provided itemKey
+    // Handle both regular items (statements, functions) and branch items (which use locations[0])
+    // Returns null if loc is invalid (e.g., end.column is null)
+    const itemKeyLenient = item => {
+        const loc = item.locations ? getLoc(item.locations[0]) : getLoc(item);
+        return loc ? keyFromLocLenient(loc) : null;
+    };
+
+    // Build items index with both exact and lenient keys for fuzzy matching
+    const buildItemsIndex = (hits, map) => {
+        const items = {};
+        const itemsLenient = {};
+        for (const [key, itemHits] of Object.entries(hits)) {
+            const item = map[key];
+            const exactKey = itemKey(item);
+            items[exactKey] = [itemHits, item];
+            const lenientKey = itemKeyLenient(item);
+            if (lenientKey && !itemsLenient[lenientKey]) {
+                itemsLenient[lenientKey] = exactKey;
+            }
+        }
+        return [items, itemsLenient];
+    };
+
+    const [aItems, aItemsLenient] = buildItemsIndex(aHits, aMap);
+    const [bItems, bItemsLenient] = buildItemsIndex(bHits, bMap);
+
     const mergedItems = {};
+    const matchedBKeys = new Set(); // track which B items have been matched
+
     for (const [key, aValue] of Object.entries(aItems)) {
         let aItemHits = aValue[0];
         const aItem = aValue[1];
-        const bValue = bItems[key];
+        let bValue = bItems[key];
+        let matchedBKey = key;
+
+        // If exact match fails, try lenient match (ignoring end.column)
+        if (!bValue) {
+            const lenientKey = itemKeyLenient(aItem);
+            if (lenientKey) {
+                const bExactKey = bItemsLenient[lenientKey];
+                if (bExactKey && !matchedBKeys.has(bExactKey)) {
+                    bValue = bItems[bExactKey];
+                    matchedBKey = bExactKey;
+                }
+            }
+        }
+
         if (!bValue) {
             // not an identified range in b, but might be contained by one
             aItemHits = addNearestContainerHits(aItem, aItemHits, bMap, bHits);
         } else {
             // is an identified range in b, so add the hits together
             aItemHits = addHits(aItemHits, bValue[0]);
+            matchedBKeys.add(matchedBKey);
         }
         mergedItems[key] = [aItemHits, aItem];
     }
+
     // now find the items in b that are not in a. already added matches.
     for (const [key, bValue] of Object.entries(bItems)) {
         let bItemHits = bValue[0];
         const bItem = bValue[1];
-        if (mergedItems[key]) continue;
-        // not an identified range in b, but might be contained by one
+        if (mergedItems[key] || matchedBKeys.has(key)) continue;
+
+        // Try lenient match - if a lenient match exists in A, skip (already merged)
+        const lenientKey = itemKeyLenient(bItem);
+        if (lenientKey && aItemsLenient[lenientKey]) continue;
+
+        // not an identified range in a, but might be contained by one
         bItemHits = addNearestContainerHits(bItem, bItemHits, aMap, aHits);
         mergedItems[key] = [bItemHits, bItem];
     }
