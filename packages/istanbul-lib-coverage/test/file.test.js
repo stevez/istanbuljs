@@ -1132,19 +1132,17 @@ describe('lenient merge with different end.column values', () => {
                 end: { line: el, column: ec }
             };
         };
-        // Simulate coverage from two different transpilers that produce
-        // different end.column values for the same logical statement
         const c1 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 50), // end.column = 50
+                0: loc(1, 0, 1, 50),
                 1: loc(2, 0, 2, 30)
             },
             fnMap: {
                 0: {
                     name: 'foo',
                     line: 1,
-                    loc: loc(1, 0, 1, 50) // end.column = 50
+                    loc: loc(1, 0, 1, 50)
                 }
             },
             branchMap: {
@@ -1162,21 +1160,21 @@ describe('lenient merge with different end.column values', () => {
         const c2 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 55), // end.column = 55 (different!)
-                1: loc(2, 0, 2, 35) // end.column = 35 (different!)
+                0: loc(1, 0, 1, 55),
+                1: loc(2, 0, 2, 35)
             },
             fnMap: {
                 0: {
                     name: 'foo',
                     line: 1,
-                    loc: loc(1, 0, 1, 55) // end.column = 55 (different!)
+                    loc: loc(1, 0, 1, 55)
                 }
             },
             branchMap: {
                 0: {
                     type: 'if',
                     line: 2,
-                    locations: [loc(2, 0, 2, 35), loc(2, 35, 2, 65)] // different end columns
+                    locations: [loc(2, 0, 2, 35), loc(2, 35, 2, 65)]
                 }
             },
             s: { 0: 0, 1: 1 },
@@ -1187,17 +1185,12 @@ describe('lenient merge with different end.column values', () => {
         c1.merge(c2);
         const summary = c1.toSummary();
 
-        // With lenient matching, both statements should be merged
-        // Statement 0: 1 + 0 = 1 (covered)
-        // Statement 1: 0 + 1 = 1 (covered)
         assert.deepEqual(summary.statements, {
             total: 2,
             covered: 2,
             skipped: 0,
             pct: 100
         });
-
-        // Functions should be merged: 1 + 1 = 2
         assert.deepEqual(summary.functions, {
             total: 1,
             covered: 1,
@@ -1205,8 +1198,6 @@ describe('lenient merge with different end.column values', () => {
             pct: 100
         });
         assert.equal(c1.f[0], 2);
-
-        // Branches should be merged: [1, 0] + [0, 1] = [1, 1]
         assert.deepEqual(summary.branches, {
             total: 2,
             covered: 2,
@@ -1216,8 +1207,6 @@ describe('lenient merge with different end.column values', () => {
     });
 
     it('only stores first A item when multiple A items share same lenient key', () => {
-        // Test coverage for lines 155-157: if (!aItemsLenient[lenientKey])
-        // When A has multiple items with same lenient key, only the first is stored
         const loc = function(sl, sc, el, ec) {
             return {
                 start: { line: sl, column: sc },
@@ -1228,8 +1217,8 @@ describe('lenient merge with different end.column values', () => {
         const c1 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 50), // lenient key: 1|0|1
-                1: loc(1, 0, 1, 60) // lenient key: 1|0|1 (same!) - triggers line 155 false branch
+                0: loc(1, 0, 1, 50),
+                1: loc(1, 0, 1, 60)
             },
             fnMap: {},
             branchMap: {},
@@ -1241,7 +1230,7 @@ describe('lenient merge with different end.column values', () => {
         const c2 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 55) // lenient key: 1|0|1 - matches first A item
+                0: loc(1, 0, 1, 55)
             },
             fnMap: {},
             branchMap: {},
@@ -1252,8 +1241,6 @@ describe('lenient merge with different end.column values', () => {
 
         c1.merge(c2);
 
-        // First A item (index 0) should be merged with B's item: 2 + 4 = 6
-        // Second A item (index 1) keeps its original value: 3
         assert.equal(c1.s[0], 6);
         assert.equal(c1.s[1], 3);
         const summary = c1.toSummary();
@@ -1261,10 +1248,6 @@ describe('lenient merge with different end.column values', () => {
     });
 
     it('skips extra B items that share lenient key with A items', () => {
-        // Test coverage for line 210: if (aItemsLenient[lenientKey]) continue;
-        // When B has multiple items with same lenient key as an A item,
-        // only the first B item gets lenient-matched in the first loop.
-        // The second B item should be skipped in the second loop via line 210.
         const loc = function(sl, sc, el, ec) {
             return {
                 start: { line: sl, column: sc },
@@ -1275,7 +1258,7 @@ describe('lenient merge with different end.column values', () => {
         const c1 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 50) // lenient key: 1|0|1
+                0: loc(1, 0, 1, 50)
             },
             fnMap: {},
             branchMap: {},
@@ -1287,8 +1270,8 @@ describe('lenient merge with different end.column values', () => {
         const c2 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
-                0: loc(1, 0, 1, 99), // lenient key: 1|0|1 (same as c1)
-                1: loc(1, 0, 1, 88) // lenient key: 1|0|1 (same as c1) - this triggers line 210
+                0: loc(1, 0, 1, 99),
+                1: loc(1, 0, 1, 88)
             },
             fnMap: {},
             branchMap: {},
@@ -1299,16 +1282,12 @@ describe('lenient merge with different end.column values', () => {
 
         c1.merge(c2);
 
-        // A's item should be merged with B's first matching item (index 0)
-        // B's second item (index 1) shares same lenient key, should be skipped via line 210
         const summary = c1.toSummary();
-        assert.equal(summary.statements.total, 1); // Only 1 statement, not 2
-        assert.equal(c1.s[0], 8); // 5 + 3 = 8 (B's item 1 with value 7 is skipped)
+        assert.equal(summary.statements.total, 1);
+        assert.equal(c1.s[0], 8);
     });
 
     it('handles null end.column gracefully without crashing', () => {
-        // Test case from Vitest merge-reports: end.column can be null
-        // This should not crash and should fall back to exact matching only
         const c1 = new FileCoverage({
             path: '/path/to/file',
             statementMap: {
@@ -1347,15 +1326,13 @@ describe('lenient merge with different end.column values', () => {
             b: {}
         });
 
-        // Should not throw
         c1.merge(c2);
 
-        // Coverage should be merged correctly via exact matching
         const summary = c1.toSummary();
         assert.equal(summary.statements.total, 2);
         assert.equal(summary.statements.covered, 2);
-        assert.equal(c1.s[0], 1); // 1 + 0
-        assert.equal(c1.s[1], 1); // 0 + 1
+        assert.equal(c1.s[0], 1);
+        assert.equal(c1.s[1], 1);
     });
 });
 

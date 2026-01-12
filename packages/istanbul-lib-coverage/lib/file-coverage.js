@@ -47,8 +47,8 @@ const keyFromLoc = ({ start, end }) =>
 
 // Lenient key that ignores end.column - used for fuzzy matching when exact match fails
 // This handles cases where different transpilers produce different end.column values
-const keyFromLocLenient = ({ start, end }) =>
-    `${start.line}|${start.column}|${end.line}`;
+const REMOVE_END_MAPPING_PATTERN = /^([^|]+\|[^|]+\|[^|]+)\|[^|]*$/;
+const keyFromLocLenient = key => key.replace(REMOVE_END_MAPPING_PATTERN, '$1');
 
 const isObj = o => !!o && typeof o === 'object';
 const isLineCol = o =>
@@ -136,14 +136,6 @@ const addNearestContainerHits = (item, itemHits, map, mapHits) => {
 };
 
 const mergeProp = (aHits, aMap, bHits, bMap, itemKey = keyFromLoc) => {
-    // Derive lenient key function from the provided itemKey
-    // Handle both regular items (statements, functions) and branch items (which use locations[0])
-    // Returns null if loc is invalid (e.g., end.column is null)
-    const itemKeyLenient = item => {
-        const loc = item.locations ? getLoc(item.locations[0]) : getLoc(item);
-        return loc ? keyFromLocLenient(loc) : null;
-    };
-
     // Build items index with both exact and lenient keys for fuzzy matching
     const buildItemsIndex = (hits, map) => {
         const items = {};
@@ -152,8 +144,9 @@ const mergeProp = (aHits, aMap, bHits, bMap, itemKey = keyFromLoc) => {
             const item = map[key];
             const exactKey = itemKey(item);
             items[exactKey] = [itemHits, item];
-            const lenientKey = itemKeyLenient(item);
-            if (lenientKey && !itemsLenient[lenientKey]) {
+            // Derive lenient key by stripping end.column from the exact key
+            const lenientKey = keyFromLocLenient(exactKey);
+            if (!itemsLenient[lenientKey]) {
                 itemsLenient[lenientKey] = exactKey;
             }
         }
@@ -174,13 +167,11 @@ const mergeProp = (aHits, aMap, bHits, bMap, itemKey = keyFromLoc) => {
 
         // If exact match fails, try lenient match (ignoring end.column)
         if (!bValue) {
-            const lenientKey = itemKeyLenient(aItem);
-            if (lenientKey) {
-                const bExactKey = bItemsLenient[lenientKey];
-                if (bExactKey && !matchedBKeys.has(bExactKey)) {
-                    bValue = bItems[bExactKey];
-                    matchedBKey = bExactKey;
-                }
+            const lenientKey = keyFromLocLenient(key);
+            const bExactKey = bItemsLenient[lenientKey];
+            if (bExactKey && !matchedBKeys.has(bExactKey)) {
+                bValue = bItems[bExactKey];
+                matchedBKey = bExactKey;
             }
         }
 
@@ -202,8 +193,8 @@ const mergeProp = (aHits, aMap, bHits, bMap, itemKey = keyFromLoc) => {
         if (mergedItems[key] || matchedBKeys.has(key)) continue;
 
         // Try lenient match - if a lenient match exists in A, skip (already merged)
-        const lenientKey = itemKeyLenient(bItem);
-        if (lenientKey && aItemsLenient[lenientKey]) continue;
+        const lenientKey = keyFromLocLenient(key);
+        if (aItemsLenient[lenientKey]) continue;
 
         // not an identified range in a, but might be contained by one
         bItemHits = addNearestContainerHits(bItem, bItemHits, aMap, aHits);
